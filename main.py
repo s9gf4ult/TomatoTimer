@@ -5,23 +5,24 @@ from PySide import QtCore, QtGui
 import state
 
 class MainWindow(QtGui.QWidget):
-    def __init__(self, controller):
+    def __init__(self):
         super().__init__()
+
+        self.st = state.LogicFMS()
 
         self.resize(130, 50)
         self.setWindowTitle('TomatoTimer')
 
         self.btn_start = QtGui.QPushButton("Start", self)
+        self.btn_stop = QtGui.QPushButton("Stop", self)
         self.btn_lpause = QtGui.QPushButton("Long Pause", self)
         self.btn_spause = QtGui.QPushButton("Short Pause", self)
         self.widget = QtGui.QLabel(str("25:00"), self)
         self.countPomidoro = QtGui.QLabel(str("1"), self)
 
-        self.control = controller
-
         # timer
         self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.update_label)
+        self.timer.timeout.connect(self.timerTicked)
         self.timer.start(1000)
 
         # self.control.btn_start_click(self)
@@ -35,6 +36,7 @@ class MainWindow(QtGui.QWidget):
         self.layoutVertical.addWidget(self.countPomidoro)
         self.layoutVertical.addWidget(self.lcd)
         self.layoutVertical.addWidget(self.btn_start)
+        self.layoutVertical.addWidget(self.btn_stop)
         self.layoutVertical.addWidget(self.btn_lpause)
         self.layoutVertical.addWidget(self.btn_spause)
 
@@ -47,25 +49,74 @@ class MainWindow(QtGui.QWidget):
         self.btn_spause.hide()
 
         # connect
-        self.btn_start.clicked.connect(self.on_button)
+        self.btn_start.clicked.connect(self.startClicked)
+        self.btn_stop.clicked.connect(self.stopClicked)
+        self.btn_lpause.clicked.connect(self.lpClicked)
+        self.btn_spause.clicked.connect(self.spClicked)
 
-    def on_button(self):
-        self.control.btn_start_click(self)
+        self.update_windonw(time.time())
 
-    def update_label(self):
+    def timerTicked(self):
         t = time.time()
-        self.evt = state.TickEvent(t)
-        self.control.st.next_state(self.evt)
-        self.update_windonw()
-        # print (self.control.st.get_state)
+        self.someEvt(state.TickEvent(t), t)
 
-    def update_windonw(self):
-        if isinstance(self.control.st.state, state.InitState):
-            self.widget.setText('Press Start to starting pomidoro')
-        elif isinstance(self.control.st.state, state.TomatoState):
-            label_time = self.control.st.remining_time(self.evt)
-            self.widget.setText(str(label_time))
-            self.lcd.display(str(label_time))
+    def startClicked(self):
+        t = time.time()
+        self.someEvt(state.StartEvent(t), t)
+
+    def stopClicked(self):
+        t = time.time()
+        self.someEvt(state.StopEvent(), t)
+
+    def lpClicked(self):
+        t = time.time()
+        self.someEvt(state.LongEvent(t), t)
+
+    def spClicked(self):
+        t = time.time()
+        self.someEvt(state.ShortEvent(t), t)
+
+    def someEvt(self, evt, t):
+        self.st.next_state(evt)
+        self.update_windonw(t)
+
+    def updateLCD(self, t):
+        rem = self.st.remining_time(t)
+        if rem:
+            self.lcd.show()
+            self.lcd.display(time.strftime("%M:%S", time.gmtime(rem)))
+        else:
+            self.lcd.hide()
+            self.lcd.display("00:00")
+
+    def update_windonw(self, t):
+        if isinstance(self.st.state, state.InitState):
+            self.btn_spause.hide()
+            self.btn_lpause.hide()
+            self.btn_stop.hide()
+            self.btn_start.show()
+            self.widget.setText("Press Start to starting pomidoro")
+        elif isinstance(self.st.state, (state.TomatoState, state.ShortState, state.LongState)):
+            self.btn_spause.hide()
+            self.btn_lpause.hide()
+            self.btn_stop.show()
+            self.btn_start.hide()
+            self.widget.setText("Counting suka")
+        elif isinstance(self.st.state, state.SelectState):
+            self.btn_spause.show()
+            self.btn_lpause.show()
+            self.btn_stop.hide()
+            self.btn_start.hide()
+            self.widget.setText("Select pause suka")
+
+        self.updateLCD(t)
+
+        # if isinstance(self.st.state, state.InitState):
+        #     self.widget.setText('Press Start to starting pomidoro')
+        # elif isinstance(self.st.state, state.TomatoState):
+        #     label_time = self.st.remining_time(self.evt)
+        #     self.widget.setText(str(label_time))
+        #     self.lcd.display(str(label_time))
 
     def create_tray_icon(self):
         icon = QtGui.QIcon('images/black-tomat.png')
@@ -152,42 +203,12 @@ class Dialog(QtGui.QDialog):
         self.hide()
 
 
-class Controller():
-
-    def __init__(self):
-        self.st = state.LogicFMS()
-
-    def btn_start_click(self, app):
-
-        if self.st.state.name == 'init':
-            app.btn_start.setText("Stop")
-            icon = QtGui.QIcon('images/red-tomat.png')
-            app.trayIcon.setIcon(icon)
-            self.st.next_state(state.StartEvent, time.time())
-        else:
-            app.btn_start.setText("Start")
-            icon = QtGui.QIcon('images/black-tomat.png')
-            app.trayIcon.setIcon(icon)
-            self.st.next_state(state.StopEvent)
-        # if not app.timer.isActive():
-            # app.btn_start.setText("Stop")
-            # icon = QtGui.QIcon('images/red-tomat.png')
-            # app.trayIcon.setIcon(icon)
-            # app.timer.start(1000)
-        # else:
-            # app.btn_start.setText("Start")
-            # app.timer.stop()
-            # icon = QtGui.QIcon('images/black-tomat.png')
-            # app.trayIcon.setIcon(icon)
-
-
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
     app.setApplicationName('TomatoTimer')
 
-    control = Controller()
-    main = MainWindow(control)
+    main = MainWindow()
     main.show()
 
     sys.exit(app.exec_())
